@@ -1,30 +1,124 @@
 import cv2
 import time
+import numpy as np
+import mediapipe as mp
 
 
-cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION) # 카메라 여는 함수 여기서 0은 기반 카메라번호 CAP_AVFOUNDATION은 맥용 카메라 백엔드
+USE_MIRROR = True          
+CAM_W, CAM_H = 1280, 720   
+PRINT_EVERY = 30           
 
 
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-frame_idx = 0
-prev = time.perf_counter()
-while True:
-    ok, frame = cap.read() # ok는 프레임 읽기 성공 여부 frame은 실제 영상 데이터 
-    if not ok: # ok false면 멈추기
-        break
-    frame = cv2.flip(frame, 1) # flip 1은 좌우 반전 0은 상하반전 -1은 상하 좌우 반전
-    cv2.imshow("cam", frame) # cam이라는 창을 띄우고 frame 영상 띄우기
-    frame_idx +=1
+mp_hands = mp.solutions.hands
+hands = mp_hands.Hands(
+    static_image_mode=False,     
+    max_num_hands=1,             
+    model_complexity=0,          
+    min_detection_confidence=0.6,
+    min_tracking_confidence=0.6,
+)
+
+def detect_hand_roi(frame_bgr, roi_size=224, margin_ratio=0.15):
+    h, w = frame_bgr.shape[:2]
+    rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
+    res = hands.process(rgb)
+    if not res.multi_hand_landmarks:
+        return None, None, None
+
+    lm = res.multi_hand_landmarks[0].landmark
+    xs = (np.array([p.x for p in lm]) * w).astype(int)
+    ys = (np.array([p.y for p in lm]) * h).astype(int)
+
+    x0, x1 = xs.min(), xs.max()
+    y0, y1 = ys.min(), ys.max()
+    bw, bh = x1 - x0, y1 - y0
+    side = int(max(bw, bh) * (1 + margin_ratio))
+    cx, cy = (x0 + x1) // 2, (y0 + y1) // 2
+
+    sx0 = max(0, cx - side // 2)
+    sy0 = max(0, cy - side // 2)
+    sx1 = min(w, sx0 + side)
+    sy1 = min(h, sy0 + side)
+
+    roi = frame_bgr[sy0:sy1, sx0:sx1]
+    if roi.size == 0:
+        return None, None, None
+
+    roi224 = cv2.resize(roi, (roi_size, roi_size), interpolation=cv2.INTER_AREA)
+    bbox = (sx0, sy0, sx1, sy1)
+    lm_px = np.stack([xs, ys], axis=1)  
+    return roi224, bbox, lm_px
+
+def hand_mask_from_landmarks(frame_shape, lm_px):
+    """랜드마크의 convex hull로 손 마스크(흰=손, 검정=배경) 생성."""
+    h, w = frame_shape[:2]
+    mask = np.zeros((h, w), dtype=np.uint8)
+    if lm_px is None:
+        return mask
+    hull = cv2.convexHull(lm_px.astype(np.int32))
+    cv2.fillConvexPoly(mask, hull, 255)
+    return mask
+
+def main():
+    cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)  
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAM_W)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAM_H)
+
     
-       
-       
-    now = time.perf_counter()
-    fps = 1.0 / (now - prev)
-    prev = now
-    if(frame_idx%30== 0):
-        print(f"FPS: {fps:.1f}")
-    if cv2.waitKey(1) & 0xFF == ord('q'): # & 0xFF는 윈도우/맥 호환용 비트마스크입니다. q 키를 누르면 종료 waitKey(1)뭔말인줄 모르겠음
-        break
-cap.release() # C언어로 따지면 malloc
-cv2.destroyAllWindows() #C언어로 따지면 return 0;
+    cv2.namedWindow("cam", cv2.WINDOW_NORMAL)
+    cv2.namedWindow("hand_only", cv2.WINDOW_NORMAL)
+    cv2.namedWindow("debug", cv2.WINDOW_NORMAL)
+    cv2.namedWindow("roi224", cv2.WINDOW_NORMAL)
+
+    frame_idx = 0
+    prev = time.perf_counter()
+
+    while True:
+        ok, frame = cap.read()
+        if not ok:
+            break
+
+        if USE_MIRROR:
+            frame = cv2.flip(frame, 1)
+
+        
+        roi224, bbox, lm_px = detect_hand_roi(frame, roi_size=224, margin_ratio=0.15)
+
+        
+        mask = hand_mask_from_landmarks(frame.shape, lm_px)
+        hand_only = cv2.bitwise_and(frame, frame, mask=mask)
+
+        
+        dbg = frame.copy()
+        if bbox is not None:
+            x0, y0, x1, y1 = bbox
+            cv2.rectangle(dbg, (x0, y0), (x1, y1), (0, 255, 0), 2)
+        if lm_px is not None:
+            for (x, y) in lm_px:
+                cv2.circle(dbg, (int(x), int(y)), 2, (0, 0, 255), -1)
+
+        
+        cv2.imshow("cam", frame)              
+        cv2.imshow("hand_only", hand_only)    
+        cv2.imshow("debug", dbg)
+        if roi224 is not None:
+            cv2.imshow("roi224", roi224)      
+
+        
+        frame_idx += 1
+        now = time.perf_counter()
+        fps = 1.0 / (now - prev) if now > prev else 0.0
+        prev = now
+        if frame_idx % PRINT_EVERY == 0:
+            print(f"FPS: {fps:.1f}")
+
+        
+        if (cv2.waitKey(1) & 0xFF) == ord('q'):
+            break
+
+    cap.release()
+    hands.close()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    main()
