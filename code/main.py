@@ -3,16 +3,16 @@ import time
 import numpy as np
 import mediapipe as mp
 
-
-USE_MIRROR = True          
-CAM_W, CAM_H = 1280, 720   
-PRINT_EVERY = 30           
+#설정하는 부분
+USE_MIRROR = True
+CAM_W, CAM_H = 1280, 720 
+PRINT_EVERY = 30 
 
 
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(
     static_image_mode=False,     
-    max_num_hands=1,             
+    max_num_hands=2,             
     model_complexity=0,          
     min_detection_confidence=0.6,
     min_tracking_confidence=0.6,
@@ -50,7 +50,6 @@ def detect_hand_roi(frame_bgr, roi_size=224, margin_ratio=0.15):
     return roi224, bbox, lm_px
 
 def hand_mask_from_landmarks(frame_shape, lm_px):
-    """랜드마크의 convex hull로 손 마스크(흰=손, 검정=배경) 생성."""
     h, w = frame_shape[:2]
     mask = np.zeros((h, w), dtype=np.uint8)
     if lm_px is None:
@@ -97,28 +96,29 @@ def main():
             for (x, y) in lm_px:
                 cv2.circle(dbg, (int(x), int(y)), 2, (0, 0, 255), -1)
 
-        
+        # 캠실행
         cv2.imshow("cam", frame)              
         cv2.imshow("hand_only", hand_only)    
         cv2.imshow("debug", dbg)
         if roi224 is not None:
             cv2.imshow("roi224", roi224)      
 
-        
+        #fps 계산
         frame_idx += 1
         now = time.perf_counter()
         fps = 1.0 / (now - prev) if now > prev else 0.0
         prev = now
+        # 대충 30번 마다 한번씩 출력
         if frame_idx % PRINT_EVERY == 0:
             print(f"FPS: {fps:.1f}")
 
-        
+        #q를 눌리면 탈출
         if (cv2.waitKey(1) & 0xFF) == ord('q'):
             break
 
     cap.release()
     hands.close()
     cv2.destroyAllWindows()
-
+#main일떄만 실행하게 만들기 
 if __name__ == "__main__":
     main()
