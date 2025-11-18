@@ -2,13 +2,14 @@ import cv2
 import time
 import numpy as np
 import mediapipe as mp
+import os
 
-#설정하는 부분
+# 설정하는 부분
 USE_MIRROR = True
 CAM_W, CAM_H = 1280, 720 
 PRINT_EVERY = 30 
 
-
+# Mediapipe 설정
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(
     static_image_mode=False,     
@@ -17,6 +18,11 @@ hands = mp_hands.Hands(
     min_detection_confidence=0.6,
     min_tracking_confidence=0.6,
 )
+
+def ensure_folders():
+    os.makedirs("dataset/left", exist_ok=True)
+    os.makedirs("dataset/right", exist_ok=True)
+    os.makedirs("dataset/other", exist_ok=True)
 
 def detect_hand_roi(frame_bgr, roi_size=224, margin_ratio=0.15):
     h, w = frame_bgr.shape[:2]
@@ -49,6 +55,7 @@ def detect_hand_roi(frame_bgr, roi_size=224, margin_ratio=0.15):
     lm_px = np.stack([xs, ys], axis=1)  
     return roi224, bbox, lm_px
 
+
 def hand_mask_from_landmarks(frame_shape, lm_px):
     h, w = frame_shape[:2]
     mask = np.zeros((h, w), dtype=np.uint8)
@@ -58,12 +65,22 @@ def hand_mask_from_landmarks(frame_shape, lm_px):
     cv2.fillConvexPoly(mask, hull, 255)
     return mask
 
+
+
+
+
 def main():
+
+
+    ensure_folders()
+    
+    current_label = "left"
+    counters = {"left": 0, "right": 0, "other": 0}
+
     cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)  
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAM_W)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAM_H)
 
-    
     cv2.namedWindow("cam", cv2.WINDOW_NORMAL)
     cv2.namedWindow("hand_only", cv2.WINDOW_NORMAL)
     cv2.namedWindow("debug", cv2.WINDOW_NORMAL)
@@ -80,14 +97,13 @@ def main():
         if USE_MIRROR:
             frame = cv2.flip(frame, 1)
 
-        
         roi224, bbox, lm_px = detect_hand_roi(frame, roi_size=224, margin_ratio=0.15)
 
-        
+        # hand-only
         mask = hand_mask_from_landmarks(frame.shape, lm_px)
         hand_only = cv2.bitwise_and(frame, frame, mask=mask)
 
-        
+        # 디버그
         dbg = frame.copy()
         if bbox is not None:
             x0, y0, x1, y1 = bbox
@@ -96,29 +112,52 @@ def main():
             for (x, y) in lm_px:
                 cv2.circle(dbg, (int(x), int(y)), 2, (0, 0, 255), -1)
 
-        # 캠실행
-        cv2.imshow("cam", frame)              
-        cv2.imshow("hand_only", hand_only)    
+        # 화면 출력
+        cv2.imshow("cam", frame)
+        cv2.imshow("hand_only", hand_only)
         cv2.imshow("debug", dbg)
         if roi224 is not None:
-            cv2.imshow("roi224", roi224)      
+            cv2.imshow("roi224", roi224)        
+        #자동 저장
+        
+        if roi224 is not None:
+            if frame_idx % 3 == 0:   # 3프레임마다 저장
+                folder = f"dataset/{current_label}/"
+                count = counters[current_label]
+                filename = f"{current_label}_{count:05d}.png"
+                save_path = folder + filename
 
-        #fps 계산
+                cv2.imwrite(save_path, roi224)
+                counters[current_label] += 1
+                print("Saved:", save_path)
+
+
+        # FPS
         frame_idx += 1
         now = time.perf_counter()
-        fps = 1.0 / (now - prev) if now > prev else 0.0
+        fps = 1.0 / (now - prev)
         prev = now
-        # 대충 30번 마다 한번씩 출력
+
         if frame_idx % PRINT_EVERY == 0:
             print(f"FPS: {fps:.1f}")
-
-        #q를 눌리면 탈출
-        if (cv2.waitKey(1) & 0xFF) == ord('q'):
+        
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('1'):
+            current_label = "left"
+            print("Label → LEFT")
+        elif key == ord('2'):
+            current_label = "right"
+            print("Label → RIGHT")
+        elif key == ord('3'):
+            current_label = "other"
+            print("Label → OTHER")
+        elif key == ord('q'):
             break
 
     cap.release()
     hands.close()
     cv2.destroyAllWindows()
-#main일떄만 실행하게 만들기 
+
+
 if __name__ == "__main__":
     main()
