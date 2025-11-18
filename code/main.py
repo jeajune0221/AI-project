@@ -73,9 +73,18 @@ def main():
 
 
     ensure_folders()
-    
-    current_label = "left"
     counters = {"left": 0, "right": 0, "other": 0}
+    files = os.listdir("dataset/left")
+    leftn = len(files)
+    counters["left"] = leftn
+    files = os.listdir("dataset/right")
+    rightn = len(files)
+    counters["right"] = rightn
+    files = os.listdir("dataset/other")
+    othern = len(files)
+    counters["other"] = othern
+
+    current_label = ""
 
     cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)  
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAM_W)
@@ -120,7 +129,7 @@ def main():
             cv2.imshow("roi224", roi224)        
         #자동 저장
         
-        if roi224 is not None:
+        if roi224 is not None and current_label != "":
             if frame_idx % 3 == 0:   # 3프레임마다 저장
                 folder = f"dataset/{current_label}/"
                 count = counters[current_label]
