@@ -6,7 +6,7 @@ import os
 
 # 설정하는 부분
 USE_MIRROR = True
-CAM_W, CAM_H = 1280, 720 
+CAM_W, CAM_H = 1280, 720
 PRINT_EVERY = 30 
 
 # Mediapipe 설정
