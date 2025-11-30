@@ -244,10 +244,8 @@ def eval_one_epoch(model, loader, criterion, device):
     return epoch_loss, epoch_acc
 
 
-# =========================================================
-# 5. 메인 학습 루프 (하이퍼파라미터 포함)
-# =========================================================
 
+# 5. 메인 학습 루프 (하이퍼파라미터 포함)
 def main():
     """
     전체 학습 파이프라인:
@@ -258,7 +256,7 @@ def main():
     set_seed(42)
     device = get_device()
 
-    # --- 5-1. Transform 정의 (CNN 입력 전처리) ---
+    # 5-1. Transform 정의 (CNN 입력 전처리)
     # 주의: left/right를 섞지 않기 위해 HorizontalFlip 같은 건 넣지 않음
     train_transform = T.Compose([
         T.ToTensor(),
@@ -266,7 +264,7 @@ def main():
                     std=[0.5, 0.5, 0.5]),
     ])
 
-    # --- 5-2. Dataset 생성 + Train/Val 분할 ---
+    # 5-2. Dataset 생성 + Train/Val 분할
     full_dataset = HandDataset(root_dir="dataset", transform=train_transform)
 
     if len(full_dataset) == 0:
@@ -285,7 +283,7 @@ def main():
 
     print(f"[Split] train: {len(train_dataset)} / val: {len(val_dataset)}")
 
-    # --- 5-2-1. 클래스 불균형 보정 (WeightedRandomSampler) ---
+    # 5-2-1. 클래스 불균형 보정 (WeightedRandomSampler)
     # full_dataset.labels 를 활용해서 train 부분의 class weight 계산
     num_classes = 3
     class_counts = [0] * num_classes
@@ -319,7 +317,7 @@ def main():
         replacement=True,
     )
 
-    # --- 5-3. DataLoader 생성 ---
+    #5-3. DataLoader 생성
     batch_size = 32
 
     train_loader = DataLoader(
@@ -336,7 +334,7 @@ def main():
         num_workers=0,
     )
 
-    # --- 5-4. 모델 / 손실함수 / 옵티마이저 / 스케줄러 / Epoch 수 ---
+    # 5-4. 모델 / 손실함수 / 옵티마이저 / 스케줄러 / Epoch 수
     model = HandGestureCNN(num_classes=3).to(device)
 
     # 클래스 weight 를 손실함수에도 반영 (left 샘플이 적어도 가중치 ↑)

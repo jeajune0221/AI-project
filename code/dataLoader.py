@@ -91,9 +91,7 @@ class HandDataset(Dataset):
         return img, label
 
 
-# -----------------------------
 # 2. CNN용 전처리(transform)
-# -----------------------------
 # ToTensor: (H,W,C) [0~255] -> (C,H,W) [0~1]
 # Normalize: 대략 -1~1 근처 값으로 스케일링
 train_transform = T.Compose([
@@ -103,9 +101,8 @@ train_transform = T.Compose([
 ])
 
 
-# -----------------------------
+
 # 3. Dataset / DataLoader 생성
-# -----------------------------
 # root_dir는 left/right/other 폴더들의 상위 폴더
 train_dataset = HandDataset(
     root_dir="dataset",
@@ -120,9 +117,8 @@ train_loader = DataLoader(
 )
 
 
-# -----------------------------
-# 4. 잘 되는지 테스트
-# -----------------------------
+
+# 4. 테스트
 if __name__ == "__main__":
     if len(train_dataset) == 0:
         print("데이터가 없어서 배치를 뽑을 수 없습니다.")

@@ -1,11 +1,3 @@
-# [전체 요약]
-# - HandGestureCNN 로 best_model.pth 가중치 로드
-# - Mediapipe로 손 랜드마크 검출
-# - 손 박스(bbox) 기준으로 224x224 ROI 추출 후 CNN에 넣어
-#   LEFT / RIGHT / OTHER + 확률(%)를 실시간으로 표시
-# - 제스처(LEFT/RIGHT)가 '변하는 순간' + 쿨다운이 지났을 때만
-#   pyautogui 로 키 입력(왼/오른 화살표) 전송
-
 import os
 import time
 import cv2
@@ -17,14 +9,13 @@ import torchvision.transforms as T
 import pyautogui
 
 
-# =========================================================
+
 # 1. 디바이스 선택 (CUDA / MPS / CPU)
-# =========================================================
 def get_device():
     if torch.cuda.is_available():
-        print("[Device] Using CUDA")
+        print("[Device] Using CUDA") # GPU가 사용가능할떄
         return torch.device("cuda")
-    elif torch.backends.mps.is_available():
+    elif torch.backends.mps.is_available(): 
         print("[Device] Using Apple MPS")
         return torch.device("mps")
     else:
@@ -32,11 +23,10 @@ def get_device():
         return torch.device("cpu")
 
 
-# =========================================================
-# 2. CNN 모델 정의 (학습 때와 완전히 동일해야 함)
-# =========================================================
+
+# 2. CNN 모델 정의
 class HandGestureCNN(nn.Module):
-    """left / right / other 3클래스 분류용 CNN"""
+    """3클래스 손 제스처 CNN"""
     def __init__(self, num_classes: int = 3):
         super().__init__()
 
@@ -76,11 +66,10 @@ class HandGestureCNN(nn.Module):
         return x
 
 
-# =========================================================
-# 3. Mediapipe 손 검출
-# =========================================================
 
-# 화면은 거울처럼 보고 싶으셔서 USE_MIRROR=True 유지
+# 3. Mediapipe 손 검출
+
+# 거울 모드 사용 여부
 USE_MIRROR = True
 
 CAM_W, CAM_H = 1280, 720
@@ -95,13 +84,8 @@ hands = mp_hands.Hands(
 )
 
 
+# 손 bbox/랜드마크 계산
 def detect_hand_bbox(frame_bgr, margin_ratio=0.2):
-    """
-    BGR 프레임에서 첫 번째 손의 박스 + 랜드마크 픽셀좌표를 계산
-    반환:
-      bbox: (x0, y0, x1, y1) 또는 None
-      lm_px: (21,2) 랜드마크 (x,y) 배열 또는 None
-    """
     h, w = frame_bgr.shape[:2]
     rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
     res = hands.process(rgb)
@@ -116,7 +100,7 @@ def detect_hand_bbox(frame_bgr, margin_ratio=0.2):
     y0, y1 = ys.min(), ys.max()
     bw, bh = x1 - x0, y1 - y0
 
-    # 정사각형 박스 + 여유 margin
+    # 정사각형 박스/margin
     side = int(max(bw, bh) * (1 + margin_ratio))
     cx, cy = (x0 + x1) // 2, (y0 + y1) // 2
 
@@ -131,13 +115,12 @@ def detect_hand_bbox(frame_bgr, margin_ratio=0.2):
     return bbox, lm_px
 
 
-# =========================================================
+
 # 4. 메인: 카메라 열고 실시간 추론
-# =========================================================
 def main():
     device = get_device()
 
-    # ---- 4-1. 모델 + 가중치 로드 ----
+    # 4-1. 모델/가중치 로드
     model = HandGestureCNN(num_classes=3).to(device)
 
     weight_path = "best_model.pth"
@@ -151,17 +134,17 @@ def main():
     model.eval()
     print(f"[모델] {weight_path} 로드 완료")
 
-    # ---- 4-2. 전처리 (학습 때와 동일) ----
+    # 4-2. 전처리 설정
     transform = T.Compose([
         T.ToTensor(),
         T.Normalize(mean=[0.5, 0.5, 0.5],
                     std=[0.5, 0.5, 0.5]),
     ])
 
-    # 0 → RIGHT, 1 → LEFT, 2 → OTHER  (사용자 기준으로 바꿔둔 상태)
+    # 0 → RIGHT, 1 → LEFT, 2 → OTHER
     idx_to_label = {1: "LEFT", 0: "RIGHT", 2: "OTHER"}
 
-    # ---- 4-3. 카메라 열기 ----
+    # 4-3. 카메라 열기
     cap = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)  # 맥 기준
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAM_W)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAM_H)
@@ -178,19 +161,19 @@ def main():
     prev = time.perf_counter()
     frame_idx = 0
 
-    # 예측 값 부드럽게 하기 위한 EMA
+    # EMA로 확률 평활화
     ema_prob = None
     ema_alpha = 0.4  # 0.3~0.5 사이에서 튜닝 가능
 
     # 제스처 트리거/쿨다운 상태
-    last_action_time = 0.0          # 마지막으로 키를 보낸 시각
-    action_cooldown = 1.0           # 최소 간격(초)
-    last_trigger_gesture = None     # 마지막으로 키를 보낸 제스처 (display_idx 기준 0/1)
+    last_action_time = 0.0
+    action_cooldown = 1.0
+    last_trigger_gesture = None
 
-    # 액션을 만들 최소 신뢰도 (EMA 기준) - 키보드 이벤트용
+    # 키 입력용 최소 신뢰도
     min_action_conf = 0.5
 
-    # 화면에 라벨을 LEFT/RIGHT로 보여줄 최소 신뢰도 (표시용)
+    # 화면 표시용 최소 신뢰도
     display_min_conf = 0.5
 
     while True:
@@ -203,13 +186,13 @@ def main():
         pred_idx = 2
         display_idx = 2
 
-        # 화면 표시용 프레임 (사람이 보는 것은 거울 모드)
+        # 표시용 프레임 (거울 모드)
         if USE_MIRROR:
             display_frame = cv2.flip(frame, 1)
         else:
             display_frame = frame.copy()
 
-        # ---- 4-4. 손 박스 + 랜드마크 검출 (항상 원본 frame 기준) ----
+        # 4-4. 손 박스 + 랜드마크 검출
         bbox, lm_px = detect_hand_bbox(frame, margin_ratio=0.2)
 
         label_text = "NO HAND"
@@ -221,7 +204,7 @@ def main():
             if roi.size > 0:
                 roi224 = cv2.resize(roi, (224, 224), interpolation=cv2.INTER_AREA)
 
-                # CNN 입력용 전처리 (BGR -> RGB -> Tensor -> Normalize)
+                # 전처리 부분 (BGR→RGB→Tensor→Normalize)
                 roi_rgb = cv2.cvtColor(roi224, cv2.COLOR_BGR2RGB)
                 inp = transform(roi_rgb)           # (3,224,224)
                 inp = inp.unsqueeze(0).to(device)  # (1,3,224,224)
@@ -239,8 +222,7 @@ def main():
                 pred_idx = int(np.argmax(ema_prob))
                 pred_conf = float(ema_prob[pred_idx])
 
-                # ----- 표시용 + 동작용 제스처 결정 -----
-                # pred_conf가 낮으면 OTHER로 강제
+                # 표시용/동작용 제스처 결정
                 if pred_conf < display_min_conf:
                     display_idx = 2
                 else:
@@ -249,13 +231,12 @@ def main():
                 label_text = idx_to_label[display_idx]
                 conf_text = f"{pred_conf * 100:.1f}%"
 
-                # ROI 창 (모델이 실제로 본 입력 확인용)
+                # 모델 입력 확인용 ROI 창
                 cv2.imshow("roi224", roi224)
 
-                # 디버그용 박스/랜드마크를 display_frame에 표시
+                # 디버그용 bbox/랜드마크 표시
                 h, w = frame.shape[:2]
                 if USE_MIRROR:
-                    # x 좌표를 좌우 반전해서 그림
                     mx0 = w - x1
                     mx1 = w - x0
                     cv2.rectangle(display_frame, (mx0, y0), (mx1, y1), (0, 255, 0), 2)
@@ -267,7 +248,7 @@ def main():
                     for (x, y) in lm_px:
                         cv2.circle(display_frame, (int(x), int(y)), 2, (0, 0, 255), -1)
 
-        # ---- 4-5. 텍스트 + FPS 표시 ----
+        # 4-5. 텍스트 + FPS 표시
         disp_text = label_text
         if conf_text:
             disp_text += f" ({conf_text})"
@@ -285,7 +266,7 @@ def main():
 
         cv2.imshow("cam", display_frame)
 
-        # ---- 4-6. 키보드 입력 처리 (제스처 디바운스 + 쿨다운) ----
+        # 4-6. 제스처로 키 입력 보내기
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
             break
@@ -294,20 +275,17 @@ def main():
         if display_idx == 2:
             last_trigger_gesture = None
 
-        # LEFT 또는 RIGHT 인 경우만 키 입력 후보
+        # LEFT / RIGHT 인 경우만 키 입력 후보
         elif display_idx in (0, 1) and ema_prob is not None:
-            # 확률이 너무 낮으면 무시
             if ema_prob[pred_idx] >= min_action_conf:
-                # 같은 제스처로 이미 트리거된 상태면 다시 발사하지 않음
+                # 같은 제스처 연속 반복은 막기
                 if last_trigger_gesture != display_idx:
-                    # 쿨다운 시간 지난 경우에만 키 전송
+                    # 쿨다운 체크 후 키 전송
                     if now - last_action_time > action_cooldown:
                         if display_idx == 1:
-                            # idx_to_label[1] == "LEFT"
                             pyautogui.press("left")
                             print("[ACTION] LEFT key sent")
                         elif display_idx == 0:
-                            # idx_to_label[0] == "RIGHT"
                             pyautogui.press("right")
                             print("[ACTION] RIGHT key sent")
 
@@ -322,3 +300,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+
+
+
