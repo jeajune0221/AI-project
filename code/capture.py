@@ -4,12 +4,12 @@ import numpy as np
 import mediapipe as mp
 import os
 
-# 설정하는 부분
+# 1. 설정하는 부분
 USE_MIRROR = True
 CAM_W, CAM_H = 1280, 720
 PRINT_EVERY = 30 
 
-# Mediapipe 설정하는 부분
+# 2. Mediapipe 설정하는 부분
 mp_hands = mp.solutions.hands
 hands = mp_hands.Hands(
     static_image_mode=False,     
@@ -108,11 +108,11 @@ def main():
 
         roi224, bbox, lm_px = detect_hand_roi(frame, roi_size=224, margin_ratio=0.15)
 
-        # hand-only
+        # 3. hand-only
         mask = hand_mask_from_landmarks(frame.shape, lm_px)
         hand_only = cv2.bitwise_and(frame, frame, mask=mask)
 
-        # 디버그
+        # 4. 디버그
         dbg = frame.copy()
         if bbox is not None:
             x0, y0, x1, y1 = bbox
@@ -121,16 +121,16 @@ def main():
             for (x, y) in lm_px:
                 cv2.circle(dbg, (int(x), int(y)), 2, (0, 0, 255), -1)
 
-        # 화면 출력
+        # 5. 화면 출력
         cv2.imshow("cam", frame)
         cv2.imshow("hand_only", hand_only)
         cv2.imshow("debug", dbg)
         if roi224 is not None:
             cv2.imshow("roi224", roi224)        
-        #자동 저장
+        # 6. 자동 저장
         
         if roi224 is not None and current_label != "":
-            if frame_idx % 3 == 0:   # 3프레임마다 저장
+            if frame_idx % 3 == 0:   #7.  3프레임마다 저장
                 folder = f"dataset/{current_label}/"
                 count = counters[current_label]
                 filename = f"{current_label}_{count:05d}.png"
@@ -141,7 +141,7 @@ def main():
                 print("Saved:", save_path)
 
 
-        # FPS
+        # 8. FPS
         frame_idx += 1
         now = time.perf_counter()
         fps = 1.0 / (now - prev)

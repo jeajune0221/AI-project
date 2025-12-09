@@ -7,18 +7,18 @@ from model import HandGestureCNN, HandDataset, get_device  # model.py 에 있는
 def main():
     device = get_device()
 
-    # 1) 전처리 (학습 때 쓴 거 그대로)
+    # 1 전처리 (학습 때 쓴 거 그대로)
     transform = T.Compose([
         T.ToTensor(),
         T.Normalize(mean=[0.5, 0.5, 0.5],
                     std=[0.5, 0.5, 0.5]),
     ])
 
-    # 2) 전체 데이터셋 로드
+    # 2 전체 데이터셋 로드
     dataset = HandDataset(root_dir="dataset", transform=transform)
     loader = DataLoader(dataset, batch_size=32, shuffle=False)
 
-    # 3) 모델/가중치 로드
+    # 3 모델/가중치 로드
     model = HandGestureCNN(num_classes=3).to(device)
     state = torch.load("best_model.pth", map_location=device)
     model.load_state_dict(state)

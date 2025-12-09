@@ -15,9 +15,9 @@ from torch.utils.data import Dataset, DataLoader, random_split, WeightedRandomSa
 import torchvision.transforms as T
 
 
-# =========================================================
+
 # 1. Seed / Device 설정
-# =========================================================
+
 
 def set_seed(seed: int = 42):
     """실험 재현성을 위한 랜덤 시드 고정"""
@@ -39,9 +39,8 @@ def get_device():
         return torch.device("cpu")
 
 
-# =========================================================
 # 2. HandDataset 정의 (dataset/left, right, other 읽기)
-# =========================================================
+
 
 class HandDataset(Dataset):
     """
@@ -134,10 +133,10 @@ class HandDataset(Dataset):
         return img, label
 
 
-# =========================================================
+
 # 3. CNN 모델 정의 (HandGestureCNN)
 #    입력: (N, 3, 224, 224) → 출력: (N, 3)
-# =========================================================
+
 
 class HandGestureCNN(nn.Module):
     """손 제스처 분류용 간단한 CNN (left/right/other, 3클래스)"""
