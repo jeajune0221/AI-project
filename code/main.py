@@ -10,7 +10,7 @@ import pyautogui
 
 
 
-# 1. 디바이스 선택 (CUDA(GPU) / MPS / CPU)
+# 1. 디바이스 선택 (CUDA(GPU) / MPS(Apple Silicon 에서의 CPu) / CPU)
 def get_device():
     if torch.cuda.is_available():
         print("[Device] Using CUDA") # GPU가 사용가능할떄
